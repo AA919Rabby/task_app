@@ -1,143 +1,56 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:task/domain/base_url.dart';
+import 'package:the_x/domain/base_url.dart';
 
 class AuthServices {
-  //User login/signin
-  signIn(String email, String password) async {
-    final response = await http.post(
-        Uri.parse('${BaseUrl.rootUrl}/api/v1/auth/login'.trim()),
-        headers: {
-          "Accept": "application/json",
-          "Content-Type": "application/json",
-        },
-        body: jsonEncode({
-          "email": email,
-          "password": password,
-        }));
-    return response;
-  }
+  // Login, Register, VerifyOtp, ForgotPass
+  Future<http.Response> loginUser(String email, String password) async =>
+      await http.post(Uri.parse("${BaseUrl.baseUrl}/auth/login"),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'email': email, 'password': password}));
 
-  //User signup/register
-  signUp(String fullName, String email, String password) async {
-    final response = await http.post(
-        Uri.parse('${BaseUrl.rootUrl}/api/v1/users/register'.trim()),
-        headers: {
-          "Accept": "application/json",
-          "Content-Type": "application/json",
-        },
-        body: jsonEncode({
-          "fullName": fullName,
-          "email": email,
-          "password": password,
-        }));
-    return response;
-  }
+  Future<http.Response> registerUser(String fullName, String email, String password) async =>
+      await http.post(Uri.parse("${BaseUrl.baseUrl}/users/register"),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'fullName': fullName, 'email': email, 'password': password}));
 
-  //Verify OTP
-  verifyOtp(String email, String otp) async {
-    final response = await http.post(
-      Uri.parse('${BaseUrl.rootUrl}/api/v1/auth/verify-otp'.trim()),
-      headers: {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-      },
-      body: jsonEncode({
-        "email": email,
-        "otp": int.parse(otp),
-      }),
+  Future<http.Response> verifyOtp(String email, int otp) async {
+    return await http.post(
+      Uri.parse("${BaseUrl.baseUrl}/auth/verify-otp"),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email, 'otp': otp}),
     );
-    return response;
   }
 
-  //OTP Verify
-  resendVerifyOtp(String email) async {
-    final response = await http.post(
-      Uri.parse('${BaseUrl.rootUrl}/api/v1/auth/resend-otp'.trim()),
-      headers: {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
+  Future<http.Response> forgotPassword(String email) async =>
+      await http.post(Uri.parse("${BaseUrl.baseUrl}/auth/forgot-password"),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'email': email}));
+
+  Future<http.Response> resetPassword(String email, String newPassword,String token) async {
+    return await http.post(
+      Uri.parse("${BaseUrl.baseUrl}/auth/reset-password"),
+      headers: {'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
       },
-      body: jsonEncode({
-        "email": email,
-      }),
+      body: jsonEncode({'email': email, 'password': newPassword}),
     );
-    return response;
   }
-  completeProfile({
-    required String about,
-    required String dob,
-    required String gender,
-    required String imagePath,
-    required String token,
-  }) async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    String formattedDate = dob;
-    if (dob.contains('/')) {
-      List<String> parts = dob.split('/');
-      if (parts.length == 3) {
-        String day = parts[0].padLeft(2, '0');
-        String month = parts[1].padLeft(2, '0');
-        String year = parts[2];
-        formattedDate = "$year-$month-$day";
-      }
+  //Complete profile
+  Future<http.Response> completeProfile(String token, String country, String about, File? imageFile) async {
+    var request = http.MultipartRequest('PUT', Uri.parse("${BaseUrl.baseUrl}/users/complete-profile"));
+    request.headers.addAll({'Authorization': 'Bearer $token'});
+
+    request.fields['country'] = country;
+    request.fields['about'] = about;
+
+    if (imageFile != null) {
+      request.files.add(await http.MultipartFile.fromPath('image', imageFile.path));
     }
 
-    await prefs.setString('profile_about', about.trim());
-    await prefs.setString('profile_dob', formattedDate);
-    await prefs.setString('profile_gender', gender.toUpperCase());
-    await prefs.setString('profile_country', 'USA');
-
-    if (imagePath.isNotEmpty) {
-      await prefs.setString('profile_image', imagePath);
-    }
-    await Future.delayed(const Duration(milliseconds: 1500));
-    String mockResponseBody = jsonEncode({
-      "success": true,
-      "statusCode": 200,
-      "message": "Profile completed successfully!",
-      "data": {
-        "about": about.trim(),
-        "dateOfBirth": formattedDate,
-        "gender": gender.toUpperCase(),
-        "country": "USA",
-        "profileImage": imagePath
-      }
-    });
-    return http.Response(mockResponseBody, 200);
+    var streamedResponse = await request.send();
+    return await http.Response.fromStream(streamedResponse);
   }
-
-  //Reset password
-  forgotPassword(String email) async {
-    final response = await http.post(
-      Uri.parse('${BaseUrl.rootUrl}/api/v1/auth/forgot-password'.trim()),
-      headers: {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-      },
-      body: jsonEncode({
-        "email": email,
-      }),
-    );
-    return response;
-  }
-
-  // Reset Password - Final Step
-  resetPassword(String email, String password) async {
-    final response = await http.post(
-      Uri.parse('${BaseUrl.rootUrl}/api/v1/auth/reset-password'.trim()),
-      headers: {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-      },
-      body: jsonEncode({
-        "email": email,
-        "password": password,
-      }),
-    );
-    return response;
-  }
-
 
 }
