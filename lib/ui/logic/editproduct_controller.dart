@@ -11,101 +11,60 @@ import '../logic/product_controller.dart';
 class EditproductController extends GetxController {
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
   var isLoading = false.obs;
-  ProductModel? editingProduct;
+  Future<void> editProduct(String id) async {
+    isLoading.value = true;
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      String? token = prefs.getString('token');
 
-  final nameController = TextEditingController();
-  final descController = TextEditingController();
-  final priceController = TextEditingController();
-  final brandController = TextEditingController();
-  final discountController = TextEditingController();
-  final weightController = TextEditingController();
-  final dimensionsController = TextEditingController();
+      final Map<String, dynamic> productMap = {
+        "name": pNameClt.text.trim(),
+        "description": pDescClt.text.trim(),
+        "price": double.parse(pPriceClt.text.trim()),
+        "stock": int.parse(pStockClt.text.trim()),
+        "category": pCatClt.text.trim(),
+        "colors": pColorClt.text.split(',').map((e) => e.trim()).toList(),
+        "isActive": true,
+      };
 
-  // Dropdown Selections
-  var selectedCategory = Rxn<String>();
-  var selectedStoke = Rxn<String>();
-  var selectedTag = Rxn<String>();
-  var selectedStatus = Rxn<String>();
-  var selectedColor = Rxn<String>();
-  var selectedBrand = Rxn<String>();
-
-  var selectedImage = Rxn<File>();
-  final ImagePicker _picker = ImagePicker();
-
-  @override
-  void onInit() {
-    super.onInit();
-    if (Get.arguments != null && Get.arguments is ProductModel) {
-      editingProduct = Get.arguments as ProductModel;
-
-      nameController.text = editingProduct!.name ?? '';
-      descController.text = editingProduct!.description ?? '';
-      priceController.text = editingProduct!.price?.toString() ?? '';
-
-      selectedBrand.value = editingProduct!.brand;
-
-      String? cat = editingProduct!.category;
-      selectedCategory.value = (cat != null && cat.trim().isNotEmpty) ? cat : null;
-
-      if (editingProduct!.stock != null) {
-        selectedStoke.value = editingProduct!.stock! > 0 ? "In Stock" : "Out of Stock";
-      } else {
-        selectedStoke.value = null;
-      }
-
-      if (editingProduct!.image != null && editingProduct!.image!.isNotEmpty) {
-        selectedImage.value = File(editingProduct!.image!);
-      }
-    }
-  }
-
-  Future<void> pickImage() async {
-    final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
-    if (image != null) {
-      selectedImage.value = File(image.path);
-    }
-  }
-
-  void updateProduct() async {
-    if (formKey.currentState!.validate() && editingProduct != null) {
-      isLoading.value = true;
-
-      Get.dialog(
-        Center(child: SpinKitFadingCircle(color: AllThemes.blueColor, size: 10.w)),
-        barrierDismissible: false,
+      var response = await http.put(
+        Uri.parse("${BaseUrl.baseUrl}/products/$id"),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(productMap),
       );
 
-      await Future.delayed(const Duration(seconds: 3));
-
-      // Update fields
-      editingProduct!.name = nameController.text;
-      editingProduct!.description = descController.text;
-      editingProduct!.price = double.tryParse(priceController.text) ?? 0.0;
-      editingProduct!.category = selectedCategory.value;
-
-      // Save from the dropdown variable
-      editingProduct!.brand = selectedBrand.value;
-
-      editingProduct!.stock = selectedStoke.value == "In Stock" ? 10 : 0;
-
-      if (selectedImage.value != null) {
-        editingProduct!.image = selectedImage.value!.path;
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        Get.snackbar('Success', 'Product updated');
+        fetchProducts();
+        Get.back();
+      } else {
+        var body = jsonDecode(response.body);
+        Get.snackbar('Error', body['message'] ?? 'Server Error');
       }
-
-      await editingProduct!.save();
-
-      if (Get.isRegistered<ProductController>()) {
-        Get.find<ProductController>().fetchLocalProducts();
-      }
-
-      if (Get.isDialogOpen == true) Get.back();
+    } catch (e) {
+      Get.snackbar('Error', 'Server error');
+    } finally {
       isLoading.value = false;
-      Get.back();
+    }
+  }
 
-      Get.snackbar("Success", "Product updated successfully!",
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.green,
-          colorText: Colors.white);
+  Future<void> deleteProduct(String id) async {
+    isLoading.value = true;
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? token = prefs.getString('token');
+    try {
+      final response = await ProductServices().deleteProduct(token!, id);
+      if (response.statusCode == 200) {
+        fetchProducts();
+        Get.back();
+      }
+    } catch (e) {
+      Get.snackbar('Error', 'Delete Failed');
+    } finally {
+      isLoading.value = false;
     }
   }
 }
