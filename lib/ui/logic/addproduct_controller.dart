@@ -10,69 +10,65 @@ class AddProductController extends GetxController {
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
   var isLoading = false.obs;
 
-  // Form Field Controllers
-  final nameController = TextEditingController();
-  final descController = TextEditingController();
-  final priceController = TextEditingController();
-  final brandController = TextEditingController();
-  final discountController = TextEditingController();
-  final weightController = TextEditingController();
-  final dimensionsController = TextEditingController();
+  @override
+  void onInit() {
+    super.onInit();
+    fetchProducts();
+  }
 
-  // Dropdown States
-  var selectedCategory = "".obs;
-  var selectedStock = "".obs;
-  var selectedTag = "".obs;
-  var selectedStatus = "".obs;
-  var selectedColor = "".obs;
-  var selectedImage = Rxn<File>();
-
-  final ImagePicker _picker = ImagePicker();
-
-  Future<void> pickImage() async {
-    final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
-    if (image != null) {
-      selectedImage.value = File(image.path);
+  Future<void> fetchProducts() async {
+    isLoading.value = true;
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? token = prefs.getString('token');
+    try {
+      final response = await ProductServices().getProducts(token ?? "");
+      final body = jsonDecode(response.body);
+      if (response.statusCode == 200) productList.value = body['data'];
+    } catch (e) {
+      Get.snackbar('Error', 'Network Error');
+    } finally {
+      isLoading.value = false;
     }
   }
 
-  void addProduct() async {
-    if (formKey.currentState!.validate()) {
-      isLoading.value = true;
 
-      await Future.delayed(const Duration(seconds: 3));
+  Future<void> addProduct() async {
+    isLoading.value = true;
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      String? token = prefs.getString('token');
 
-      String imagePath = selectedImage.value?.path ?? "";
+      final Map<String, dynamic> productMap = {
+        "name": pNameClt.text.trim(),
+        "description": pDescClt.text.trim(),
+        "price": double.parse(pPriceClt.text.trim()),
+        "stock": int.parse(pStockClt.text.trim()),
+        "category": pCatClt.text.trim(),
+        "colors": pColorClt.text.split(',').map((e) => e.trim()).toList(),
+        "isActive": true,
+      };
 
-      final newProduct = ProductModel(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        name: nameController.text,
-        description: descController.text,
-        price: double.tryParse(priceController.text) ?? 0.0,
-        stock: selectedStock.value == "In Stock" ? 10 : 0,
-        category: selectedCategory.value,
-        brand: brandController.text,
-        image: imagePath,
+      var response = await http.post(
+        Uri.parse("${BaseUrl.baseUrl}/products"),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(productMap),
       );
 
-      var box = Hive.box<ProductModel>('productsBox');
-      await box.add(newProduct);
-
-      // Refresh list in HomeView
-      if (Get.isRegistered<ProductController>()) {
-        Get.find<ProductController>().fetchLocalProducts();
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        Get.snackbar('Success', 'Product added successfully');
+        fetchProducts();
+        Get.back();
+      } else {
+        var body = jsonDecode(response.body);
+        Get.snackbar('Error', body['message'] ?? 'Server Error');
       }
-
+    } catch (e) {
+      Get.snackbar('Error', 'Ensure Price and Stock are valid numbers');
+    } finally {
       isLoading.value = false;
-      Get.back();
-
-      Get.snackbar(
-          "Success",
-          "Product added successfully",
-          backgroundColor: Colors.green,
-          colorText: Colors.white,
-          snackPosition: SnackPosition.BOTTOM
-      );
     }
   }
 }
